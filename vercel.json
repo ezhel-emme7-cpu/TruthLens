@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/analyze-image.js": {
+      "maxDuration": 30
+    },
+    "api/analyze-text.js": {
+      "maxDuration": 30
+    },
+    "api/validate-license.js": {
+      "maxDuration": 10
+    }
+  }
+}

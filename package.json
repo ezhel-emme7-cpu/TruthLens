@@ -1,0 +1,9 @@
+{
+  "name": "truthlens-pro",
+  "version": "2.1.0",
+  "private": true,
+  "description": "TruthLens Pro — detector forense de contenido generado por IA. Frontend estático + backend serverless en Vercel.",
+  "dependencies": {
+    "@vercel/kv": "^2.0.0"
+  }
+}

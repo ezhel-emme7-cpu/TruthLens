@@ -1,0 +1,1934 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TruthLens — AI Content Detector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:     #0b0b0d;
+  --bg1:    #111115;
+  --bg2:    #18181d;
+  --bg3:    #1f1f26;
+  --line:   #232329;
+  --line2:  #2e2e38;
+  --text:   #f2f2f5;
+  --t2:     #9090a8;
+  --t3:     #55556a;
+  /* --accent / --acc-d / --acc-b se sobreescriben en tiempo de carga
+     (ver el script en <head>) — rotan entre 7 tonos discretos en cada
+     visita. Estos son solo el valor de respaldo si JS no corre. */
+  --accent: #c9b3ff;
+  --acc-d:  rgba(201,179,255,0.08);
+  --acc-b:  rgba(201,179,255,0.20);
+  --green:  #34d399;
+  --g-d:    rgba(52,211,153,0.08);
+  --g-b:    rgba(52,211,153,0.18);
+  --red:    #f87171;
+  --r-d:    rgba(248,113,113,0.08);
+  --r-b:    rgba(248,113,113,0.18);
+  --amber:  #fbbf24;
+  --a-d:    rgba(251,191,36,0.08);
+  --a-b:    rgba(251,191,36,0.18);
+  --font:   'Inter', system-ui, sans-serif;
+  --rad:    10px;
+  --radsm:  6px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 14px;
+  line-height: 1.5; min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Noise */
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: 0;
+  pointer-events: none; opacity: 0.018;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px;
+}
+
+/* TOPBAR */
+.topbar {
+  position: sticky; top: 0; z-index: 50;
+  height: 52px; background: rgba(11,11,13,.9);
+  backdrop-filter: blur(20px); border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; padding: 0 28px; gap: 12px;
+}
+.logo { display: flex; align-items: center; gap: 9px; }
+.logo-icon {
+  width: 28px; height: 28px; border-radius: 7px;
+  border: 1.5px solid var(--acc-b); background: var(--acc-d);
+  display: flex; align-items: center; justify-content: center;
+}
+.logo-name { font-size: 14px; font-weight: 600; letter-spacing: -.025em; }
+.logo-sep  { width: 1px; height: 18px; background: var(--line2); }
+.logo-sub  { font-size: 11px; color: var(--t3); }
+.tb-space  { flex: 1; }
+.chip {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 500;
+  padding: 4px 10px; border-radius: 20px;
+  border: 1px solid var(--line2); background: var(--bg2); color: var(--t2);
+}
+.chip-dot { width: 5px; height: 5px; border-radius: 50%; }
+.dot-live { background: var(--green); box-shadow: 0 0 6px rgba(52,211,153,.5); }
+.scans {
+  font-size: 11px; color: var(--t3);
+  padding: 4px 10px; border-radius: 20px;
+  border: 1px solid var(--line); background: var(--bg1);
+}
+.scans strong { color: var(--accent); font-weight: 500; }
+
+/* LICENSE PANEL — usa las variables de acento (rotan de color en cada carga) */
+.api-panel {
+  background: var(--bg1); border-bottom: 1px solid var(--acc-b);
+  padding: 9px 28px; display: none; align-items: center; gap: 10px;
+  font-size: 12px; position: relative; z-index: 1;
+}
+.api-panel.show { display: flex; }
+.api-upgrade-btn {
+  background: var(--acc-d); border: 1px solid var(--acc-b);
+  color: var(--accent); font-size: 11px; font-weight: 500; font-family: var(--font);
+  padding: 5px 12px; border-radius: var(--radsm); cursor: pointer; text-decoration: none;
+  white-space: nowrap;
+}
+.api-label { color: var(--accent); font-weight: 500; white-space: nowrap; }
+.api-input {
+  flex: 1; max-width: 260px;
+  background: var(--bg2); border: 1px solid var(--acc-b); border-radius: var(--radsm);
+  color: var(--text); font-size: 12px; padding: 5px 10px; outline: none;
+  font-family: monospace;
+}
+.api-hint { font-size: 11px; color: var(--t3); }
+.api-hint a { color: var(--accent); text-decoration: none; }
+.api-close {
+  background: none; border: none; color: var(--t3); cursor: pointer;
+  font-size: 18px; line-height: 1; padding: 0 2px; margin-left: auto;
+}
+
+/* HERO */
+.hero {
+  position: relative; z-index: 1;
+  max-width: 680px; margin: 0 auto;
+  padding: 52px 28px 40px; text-align: center;
+}
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 500; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--accent); opacity: .8; margin-bottom: 20px;
+}
+.hero-eyebrow::before, .hero-eyebrow::after {
+  content: ''; display: block; width: 24px; height: 1px; background: var(--acc-b);
+}
+.hero-h1 {
+  font-size: clamp(26px, 4vw, 38px); font-weight: 300;
+  letter-spacing: -.035em; line-height: 1.1; margin-bottom: 14px;
+}
+.hero-h1 strong { font-weight: 600; }
+.hero-p { font-size: 14px; color: var(--t2); line-height: 1.7; max-width: 380px; margin: 0 auto; }
+
+/* WRAP */
+.wrap { max-width: 780px; margin: 0 auto; padding: 0 28px 80px; position: relative; z-index: 1; }
+
+/* ERROR */
+.err-bar {
+  display: none; align-items: center; gap: 8px;
+  padding: 10px 14px; margin-bottom: 14px;
+  background: var(--r-d); border: 1px solid var(--r-b);
+  border-radius: var(--radsm); font-size: 12px; color: var(--red);
+}
+.err-bar.show { display: flex; }
+
+/* UPLOAD CARD */
+.upload-card { border: 1px solid var(--line); border-radius: var(--rad); background: var(--bg1); overflow: hidden; }
+
+.dropzone {
+  position: relative; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  min-height: 190px; padding: 40px 24px; cursor: pointer;
+  border-bottom: 1px solid var(--line); transition: background .15s;
+}
+.dropzone:hover, .dropzone.over { background: var(--acc-d); }
+.dz-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.dz-ring {
+  width: 50px; height: 50px; border-radius: 50%;
+  border: 1.5px solid var(--line2); background: var(--bg2);
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color .15s;
+}
+.dropzone:hover .dz-ring, .dropzone.over .dz-ring { border-color: var(--acc-b); }
+.dz-main { font-size: 14px; font-weight: 500; }
+.dz-sub  { font-size: 12px; color: var(--t3); }
+.dz-fmts { display: flex; gap: 5px; }
+.fmt {
+  font-size: 10px; font-weight: 500; color: var(--t3);
+  padding: 2px 7px; border: 1px solid var(--line2);
+  border-radius: 4px; background: var(--bg2); letter-spacing: .04em;
+}
+.url-row { display: flex; align-items: center; }
+.url-lbl {
+  padding: 0 16px; font-size: 11px; font-weight: 500; color: var(--t3);
+  letter-spacing: .04em; text-transform: uppercase;
+  border-right: 1px solid var(--line); height: 44px;
+  display: flex; align-items: center; white-space: nowrap; flex-shrink: 0;
+}
+.url-inp {
+  flex: 1; background: transparent; border: none; outline: none;
+  color: var(--text); font-size: 13px; font-family: var(--font);
+  padding: 0 16px; height: 44px;
+}
+.url-inp::placeholder { color: var(--t3); }
+.url-btn {
+  height: 44px; padding: 0 20px;
+  border: none; border-left: 1px solid var(--line); background: transparent;
+  color: var(--accent); font-size: 12px; font-weight: 500;
+  font-family: var(--font); cursor: pointer; transition: background .15s; white-space: nowrap;
+}
+.url-btn:hover { background: var(--acc-d); }
+.upload-foot {
+  padding: 10px 16px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--t3);
+}
+
+/* ANALYZING */
+.analyzing { display: none; border: 1px solid var(--line); border-radius: var(--rad); background: var(--bg1); overflow: hidden; }
+.analyzing.show { display: block; }
+.a-grid { display: grid; grid-template-columns: 260px 1fr; }
+@media(max-width:560px){ .a-grid { grid-template-columns: 1fr; } }
+.a-img-col { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+@media(max-width:560px){ .a-img-col { border-right: none; border-bottom: 1px solid var(--line); } }
+.img-frame {
+  flex: 1; min-height: 200px; background: var(--bg2);
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.img-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .3s; }
+.img-frame img.show { opacity: 1; }
+.scan-line {
+  position: absolute; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg,transparent 0%,rgba(200,216,255,.4) 20%,rgba(200,216,255,.9) 50%,rgba(200,216,255,.4) 80%,transparent 100%);
+  animation: scanY 2s ease-in-out infinite; pointer-events: none;
+}
+@keyframes scanY { 0%{top:0%;opacity:0} 5%{opacity:1} 95%{opacity:1} 100%{top:100%;opacity:0} }
+.bracket { position: absolute; width: 16px; height: 16px; pointer-events: none; }
+.br-tl { top:10px; left:10px;  border-top:1.5px solid rgba(200,216,255,.45); border-left:1.5px solid rgba(200,216,255,.45); }
+.br-tr { top:10px; right:10px; border-top:1.5px solid rgba(200,216,255,.45); border-right:1.5px solid rgba(200,216,255,.45); }
+.br-bl { bottom:10px; left:10px;  border-bottom:1.5px solid rgba(200,216,255,.45); border-left:1.5px solid rgba(200,216,255,.45); }
+.br-br { bottom:10px; right:10px; border-bottom:1.5px solid rgba(200,216,255,.45); border-right:1.5px solid rgba(200,216,255,.45); }
+.img-meta { padding: 12px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.img-name { font-size: 12px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.img-size { font-size: 11px; color: var(--t3); }
+.a-status-col { padding: 20px 22px; display: flex; flex-direction: column; gap: 18px; }
+.status-hd { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--t3); }
+.steps { display: flex; flex-direction: column; gap: 11px; }
+.step  { display: flex; align-items: center; gap: 10px; }
+.step-ind {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+  border: 1px solid var(--line2); display: flex; align-items: center; justify-content: center;
+  transition: all .25s;
+}
+.step-ind.active { border-color: var(--accent); background: var(--acc-d); }
+.step-ind.done   { border-color: var(--green);  background: var(--g-d); }
+.step-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line2); }
+.step-ind.active .step-dot { background: var(--accent); animation: blink .9s infinite; }
+.step-ind.done   .step-dot { display: none; }
+.step-ind.done::after {
+  content: ''; width: 5px; height: 8px;
+  border-right: 1.5px solid var(--green); border-bottom: 1.5px solid var(--green);
+  transform: rotate(45deg) translate(-1px,-2px);
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+.step-lbl { font-size: 12px; color: var(--t3); transition: color .25s; }
+.step-lbl.active { color: var(--text); }
+.step-lbl.done   { color: var(--t2); }
+.status-note { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radsm); background: var(--bg2); }
+.note-hd   { font-size: 10px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase; color: var(--t3); margin-bottom: 4px; }
+.note-text { font-size: 12px; color: var(--t2); line-height: 1.55; }
+
+/* RESULT */
+.result { display: none; border: 1px solid var(--line); border-radius: var(--rad); background: var(--bg1); overflow: hidden; }
+.result.show { display: block; }
+.r-grid { display: grid; grid-template-columns: 280px 1fr; }
+@media(max-width:600px){ .r-grid { grid-template-columns: 1fr; } }
+.r-img-col { border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+@media(max-width:600px){ .r-img-col { border-right: none; border-bottom: 1px solid var(--line); } }
+.r-img-frame {
+  flex: 1; min-height: 220px; background: var(--bg2);
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.r-img-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .4s; }
+.r-img-frame img.show { opacity: 1; }
+.verdict-tag {
+  position: absolute; top: 10px; right: 10px;
+  font-size: 10px; font-weight: 600; padding: 3px 9px;
+  border-radius: 4px; letter-spacing: .06em; text-transform: uppercase; border: 1px solid;
+}
+.tag-ai     { background: var(--r-d); border-color: var(--r-b); color: var(--red); }
+.tag-real   { background: var(--g-d); border-color: var(--g-b); color: var(--green); }
+.tag-unsure { background: var(--a-d); border-color: var(--a-b); color: var(--amber); }
+.r-img-meta { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.r-fname { font-size: 12px; color: var(--t2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-finfo { font-size: 11px; color: var(--t3); }
+.r-data  { padding: 24px 26px; display: flex; flex-direction: column; gap: 20px; }
+
+/* Score */
+.score-num   { font-size: 52px; font-weight: 300; letter-spacing: -.05em; line-height: 1; margin-bottom: 4px; }
+.score-label { font-size: 12px; color: var(--t2); margin-bottom: 12px; line-height: 1.4; }
+.score-model { font-size: 11px; color: var(--t3); margin-top: 6px; }
+.score-model span { font-weight: 500; }
+.pbar-lbl { display: flex; justify-content: space-between; font-size: 10px; color: var(--t3); margin-bottom: 5px; }
+.pbar-track { height: 3px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+.pbar-fill  { height: 100%; border-radius: 2px; width: 0; transition: width 1.1s cubic-bezier(.22,1,.36,1); }
+
+/* Divider */
+.divider { height: 1px; background: var(--line); }
+
+/* Signals */
+.sig-hd   { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--t3); margin-bottom: 10px; }
+.sig-list { display: flex; flex-direction: column; gap: 9px; }
+.sig-row  { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: var(--t2); line-height: 1.45; }
+.sig-mark { flex-shrink: 0; margin-top: 4px; width: 5px; height: 5px; border-radius: 50%; }
+.mk-ai    { background: var(--red);   box-shadow: 0 0 5px rgba(248,113,113,.4); }
+.mk-real  { background: var(--green); box-shadow: 0 0 5px rgba(52,211,153,.4); }
+.mk-ambi  { background: var(--amber); }
+
+/* Actions */
+.r-actions { display: flex; gap: 8px; }
+.btn-sec {
+  flex: 1; height: 36px; padding: 0 16px; border: 1px solid var(--line2);
+  border-radius: var(--radsm); background: transparent; color: var(--t2);
+  font-size: 12px; font-weight: 500; font-family: var(--font); cursor: pointer; transition: all .15s;
+}
+.btn-sec:hover { border-color: var(--text); color: var(--text); }
+.btn-pri {
+  flex: 1; height: 36px; padding: 0 16px;
+  border: 1px solid var(--acc-b); border-radius: var(--radsm);
+  background: var(--acc-d); color: var(--accent);
+  font-size: 12px; font-weight: 500; font-family: var(--font); cursor: pointer; transition: all .15s;
+}
+.btn-pri:hover { background: var(--acc-b); }
+
+/* MODE TABS — selector Imagen | Texto */
+.mode-tabs {
+  display: flex; justify-content: center; gap: 6px;
+  max-width: 680px; margin: 0 auto 24px; padding: 0 28px;
+}
+.mode-tab {
+  font-family: var(--font); font-size: 12.5px; font-weight: 500;
+  color: var(--t2); background: var(--bg1); border: 1px solid var(--line);
+  padding: 7px 20px; border-radius: 20px; cursor: pointer; transition: all .15s;
+}
+.mode-tab.active {
+  color: var(--accent); background: var(--acc-d); border-color: var(--acc-b);
+}
+.mode-tab:hover:not(.active) { border-color: var(--line2); }
+
+/* PANE SWITCHING */
+.pane { display: none; }
+.pane.active { display: block; }
+
+/* TEXT CARD */
+.text-card {
+  border: 1px solid var(--line); border-radius: var(--rad);
+  background: var(--bg1); overflow: hidden;
+}
+.text-area-wrap { padding: 16px 16px 0; }
+.text-area {
+  width: 100%; min-height: 180px; resize: vertical;
+  background: transparent; border: none; outline: none;
+  color: var(--text); font-family: var(--font); font-size: 13.5px; line-height: 1.7;
+}
+.text-area::placeholder { color: var(--t3); }
+.text-foot {
+  padding: 10px 16px; border-top: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; color: var(--t3);
+}
+.text-btn {
+  background: var(--acc-d); border: 1px solid var(--acc-b); color: var(--accent);
+  font-family: var(--font); font-size: 12px; font-weight: 500;
+  padding: 6px 16px; border-radius: var(--radsm); cursor: pointer; transition: background .15s;
+}
+.text-btn:hover { background: var(--acc-b); }
+.text-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* TEXT RESULT */
+.text-result-body { padding: 24px; }
+.text-highlight {
+  background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radsm);
+  padding: 16px; font-size: 13px; line-height: 1.8; color: var(--t2);
+  max-height: 260px; overflow-y: auto; margin-bottom: 20px; white-space: pre-wrap;
+}
+.text-highlight mark {
+  background: var(--r-d); color: var(--red); border-bottom: 1.5px solid var(--red);
+  padding: 0 1px; border-radius: 2px;
+}
+
+/* FOOTER */
+.footer { position: relative; z-index: 1; text-align: center; padding: 0 28px 40px; font-size: 11px; color: var(--t3); line-height: 1.8; }
+</style>
+<script>
+// ─────────────────────────────────────────────
+//  ACENTO ROTATIVO — 7 tonos discretos, uno distinto cada vez que
+//  se entra a la app. Se aplica aquí (antes del <body>) para que no
+//  haya parpadeo del color anterior al cargar.
+// ─────────────────────────────────────────────
+(function () {
+  var THEMES = [
+    { rgb: '201,179,255' }, // Violeta
+    { rgb: '126,200,255' }, // Azul eléctrico
+    { rgb: '195,242,121' }, // Verde limón
+    { rgb: '255,224,138' }, // Amarillo mantequilla
+    { rgb: '255,171,110' }, // Anaranjado brillante
+    { rgb: '255,122,122' }, // Rojo neón
+    { rgb: '255,133,208' }  // Rosa eléctrico
+  ];
+  var idx = parseInt(localStorage.getItem('tl_theme_idx') || '0', 10);
+  if (isNaN(idx) || idx < 0 || idx >= THEMES.length) idx = 0;
+  var t = THEMES[idx];
+  var root = document.documentElement.style;
+  root.setProperty('--accent', 'rgb(' + t.rgb + ')');
+  root.setProperty('--acc-d', 'rgba(' + t.rgb + ',0.09)');
+  root.setProperty('--acc-b', 'rgba(' + t.rgb + ',0.22)');
+  localStorage.setItem('tl_theme_idx', String((idx + 1) % THEMES.length));
+})();
+</script>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<nav class="topbar">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <circle cx="5.5" cy="5.5" r="3.5" stroke="rgba(200,216,255,.7)" stroke-width="1.3"/>
+        <line x1="8.2" y1="8.2" x2="12" y2="12" stroke="rgba(200,216,255,.7)" stroke-width="1.3" stroke-linecap="round"/>
+        <circle cx="5.5" cy="5.5" r="1.3" fill="rgba(200,216,255,.7)"/>
+      </svg>
+    </div>
+    <span class="logo-name">TruthLens</span>
+  </div>
+  <div class="logo-sep"></div>
+  <span class="logo-sub">AI Image Detector</span>
+  <div class="tb-space"></div>
+  <div class="chip"><div class="chip-dot dot-live"></div>Detector activo</div>
+  <div class="scans" id="scansChip">
+  <span id="scansMode">Local</span> · restantes: <strong id="scansLeft">3</strong>
+</div>
+  <button class="api-close" id="licenseLinkBtn" style="font-size:11px;color:var(--t2);background:none;border:none;cursor:pointer;text-decoration:underline;margin-left:4px">¿Tienes licencia?</button>
+</nav>
+
+<!-- LICENSE PANEL — reemplaza al antiguo panel de API key.
+     El usuario ya NO pega su propia API key de Anthropic: esa key vive
+     únicamente en el servidor (variable de entorno de Vercel). Aquí el
+     usuario activa el código de licencia que recibe al comprar en LemonSqueezy. -->
+<div class="api-panel" id="apiPanel">
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+    <circle cx="5" cy="5" r="3" stroke="var(--accent)" stroke-width="1.2"/>
+    <line x1="7.2" y1="7.2" x2="11" y2="11" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round"/>
+  </svg>
+  <span class="api-label" id="apiPanelMsg">Usaste tus 3 análisis gratuitos de esta sesión.</span>
+  <input class="api-input" id="licenseInput" type="text" placeholder="Pega tu código de licencia..." autocomplete="off">
+  <button class="api-upgrade-btn" id="licenseActivateBtn">Activar</button>
+  <a class="api-upgrade-btn" id="apiUpgradeBtn" href="#" target="_blank" style="text-decoration:none">Ver planes →</a>
+  <button class="api-close" onclick="document.getElementById('apiPanel').classList.remove('show')">×</button>
+</div>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-eyebrow">Forensic · Content AI · 2026</div>
+  <h1 class="hero-h1"><strong>Detecta contenido</strong><br>generado por IA</h1>
+  <p class="hero-p">Sube una imagen o pega un texto y obtén un veredicto forense al instante. Demo gratis sin cuenta — análisis avanzado con límite mensual según tu plan.</p>
+</header>
+
+<!-- MODE TABS -->
+<div class="mode-tabs">
+  <button class="mode-tab active" id="tabImage" type="button">Imagen</button>
+  <button class="mode-tab" id="tabText" type="button">Texto</button>
+</div>
+
+<div class="err-bar" id="errBar">
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+    <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" stroke-width="1.2"/>
+    <line x1="6.5" y1="3.5" x2="6.5" y2="7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    <circle cx="6.5" cy="9.5" r=".8" fill="currentColor"/>
+  </svg>
+  <span id="errText"></span>
+</div>
+
+<!-- IMAGE PANE -->
+<div class="wrap pane active" id="imagePane">
+
+  <!-- UPLOAD -->
+  <div class="upload-card" id="uploadCard">
+    <div class="dropzone" id="dropzone">
+      <input class="dz-input" type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,image/gif">
+      <div class="dz-ring">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M10 2v10M7 5l3-3 3 3" stroke="var(--t2)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 13v3a1 1 0 001 1h12a1 1 0 001-1v-3" stroke="var(--t2)" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <p class="dz-main">Arrastra una imagen o haz clic para seleccionar</p>
+      <p class="dz-sub">PNG, JPG, WEBP hasta 10MB</p>
+      <div class="dz-fmts">
+        <span class="fmt">PNG</span><span class="fmt">JPG</span>
+        <span class="fmt">WEBP</span><span class="fmt">GIF</span>
+      </div>
+    </div>
+    <div class="url-row">
+      <span class="url-lbl">URL</span>
+      <input class="url-inp" id="urlInput" type="url" placeholder="https://example.com/image.jpg">
+      <button class="url-btn" id="urlBtn">Analizar</button>
+    </div>
+    <div class="upload-foot">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M6 1L2 3v3.2C2 8.9 3.8 11 6 11.6 8.2 11 10 8.9 10 6.2V3L6 1z" stroke="var(--t3)" stroke-width="1"/>
+      </svg>
+      Las imágenes no se almacenan. Análisis en tiempo real, sin cuenta requerida.
+    </div>
+  </div>
+
+  <!-- ANALYZING -->
+  <div class="analyzing" id="analyzing">
+    <div class="a-grid">
+      <div class="a-img-col">
+        <div class="img-frame" id="aFrame">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" opacity=".15" id="aPlaceholder">
+            <rect x="4" y="8" width="32" height="24" rx="4" stroke="white" stroke-width="1.2"/>
+            <circle cx="13" cy="16" r="3" stroke="white" stroke-width="1.2"/>
+            <path d="M4 28l10-8 7 6 5-4 10 6" stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <img id="aImg" alt="">
+          <div class="scan-line"></div>
+          <div class="bracket br-tl"></div><div class="bracket br-tr"></div>
+          <div class="bracket br-bl"></div><div class="bracket br-br"></div>
+        </div>
+        <div class="img-meta">
+          <div class="img-name" id="aName">—</div>
+          <div class="img-size" id="aSize">—</div>
+        </div>
+      </div>
+      <div class="a-status-col">
+        <div class="status-hd">Procesando</div>
+        <div class="steps" id="stepList"></div>
+        <div class="status-note">
+          <div class="note-hd">Análisis en curso</div>
+          <p class="note-text" id="noteText">Iniciando análisis forense...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULT -->
+  <div class="result" id="result">
+    <div class="r-grid">
+      <div class="r-img-col">
+        <div class="r-img-frame">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" opacity=".1" id="rPlaceholder">
+            <rect x="4" y="8" width="32" height="24" rx="4" stroke="white" stroke-width="1.2"/>
+            <circle cx="13" cy="16" r="3" stroke="white" stroke-width="1.2"/>
+            <path d="M4 28l10-8 7 6 5-4 10 6" stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <img id="rImg" alt="">
+          <div class="verdict-tag" id="vTag"></div>
+        </div>
+        <div class="r-img-meta">
+          <div class="r-fname" id="rFname">—</div>
+          <div class="r-finfo" id="rFinfo">—</div>
+        </div>
+      </div>
+      <div class="r-data">
+        <div>
+          <div class="score-num" id="scoreNum">—</div>
+          <div class="score-label" id="scoreLabel">—</div>
+          <div class="pbar-lbl"><span>Auténtica</span><span>Generada por IA</span></div>
+          <div class="pbar-track"><div class="pbar-fill" id="pbarFill"></div></div>
+          <div class="score-model" id="scoreModel"></div>
+        </div>
+        <div class="divider"></div>
+        <div>
+          <div class="sig-hd">Señales detectadas</div>
+          <div class="sig-list" id="sigList"></div>
+        </div>
+        <div class="divider"></div>
+        <div class="r-actions">
+          <button class="btn-sec" id="btnReset">Nueva imagen</button>
+          <button class="btn-pri" id="btnShare">Compartir resultado</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TEXT PANE -->
+<div class="wrap pane" id="textPane">
+
+  <!-- TEXT INPUT -->
+  <div class="text-card" id="textCard">
+    <div class="text-area-wrap">
+      <textarea class="text-area" id="textInput" placeholder="Pega aquí el texto que quieres verificar (mínimo 15 palabras)..."></textarea>
+    </div>
+    <div class="text-foot">
+      <span id="textWordCount">0 palabras</span>
+      <button class="text-btn" id="textAnalyzeBtn" type="button" disabled>Analizar texto</button>
+    </div>
+  </div>
+
+  <!-- TEXT ANALYZING -->
+  <div class="analyzing" id="textAnalyzing">
+    <div class="a-grid" style="grid-template-columns: 1fr;">
+      <div class="a-status-col">
+        <div class="status-hd">Procesando</div>
+        <div class="steps" id="textStepList"></div>
+        <div class="status-note">
+          <div class="note-hd">Análisis en curso</div>
+          <p class="note-text" id="textNoteText">Iniciando análisis lingüístico...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TEXT RESULT -->
+  <div class="result" id="textResult">
+    <div class="text-result-body">
+      <div>
+        <div class="score-num" id="textScoreNum">—</div>
+        <div class="score-label" id="textScoreLabel">—</div>
+        <div class="pbar-lbl"><span>Humano</span><span>Generado por IA</span></div>
+        <div class="pbar-track"><div class="pbar-fill" id="textPbarFill"></div></div>
+        <div class="score-model" id="textScoreModel"></div>
+      </div>
+      <div class="divider" style="margin:18px 0"></div>
+      <div class="text-highlight" id="textHighlight"></div>
+      <div>
+        <div class="sig-hd">Señales detectadas</div>
+        <div class="sig-list" id="textSigList"></div>
+      </div>
+      <div class="divider" style="margin:18px 0"></div>
+      <div class="r-actions">
+        <button class="btn-sec" id="btnTextReset" type="button">Nuevo texto</button>
+        <button class="btn-pri" id="btnTextShare" type="button">Compartir resultado</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="footer">
+  TruthLens · Aion IA — Los detectores de IA no son infalibles. Úsalo como referencia, no como evidencia definitiva.<br>
+  <span style="opacity:.5" id="footerQuota">Demo gratis: 3 análisis por sesión, hasta 2 sesiones al mes · Análisis avanzado con límite mensual según tu plan — <a href="#" id="footerUpgradeLink" target="_blank" style="color:var(--accent);text-decoration:none">ver planes</a></span>
+</footer>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG
+// ─────────────────────────────────────────────
+const STEPS = [
+  'Leyendo metadatos EXIF',
+  'Analizando estructura de píxeles',
+  'Buscando artefactos de generación IA',
+  'Analizando patrones visuales',
+  'Generando veredicto forense'
+];
+
+const STEP_NOTES = [
+  'Extrayendo y verificando metadatos EXIF del archivo...',
+  'Examinando distribución de ruido y compresión JPEG...',
+  'Detectando patrones característicos de modelos generativos...',
+  'Ejecutando análisis visual avanzado...',
+  'Sintetizando señales forenses en veredicto final...'
+];
+
+const TEXT_STEPS = [
+  'Segmentando oraciones',
+  'Midiendo uniformidad estructural',
+  'Buscando muletillas típicas de LLM',
+  'Calculando diversidad léxica',
+  'Generando veredicto lingüístico'
+];
+
+const TEXT_STEP_NOTES = [
+  'Dividiendo el texto en oraciones...',
+  'Comparando longitud y ritmo entre oraciones...',
+  'Revisando frases características de texto generado...',
+  'Calculando variedad de vocabulario...',
+  'Sintetizando señales lingüísticas en veredicto final...'
+];
+
+// ─────────────────────────────────────────────
+//  STATE — cuotas y sesión demo
+// ─────────────────────────────────────────────
+// El demo gratuito NO es ilimitado ni infinito: 3 análisis por sesión,
+// máximo 2 sesiones nuevas por mes, y cada sesión caduca sola a la hora
+// de haberse iniciado (haya usado o no sus 3 análisis).
+var LOCAL_SCANS_PER_SESSION = 3;
+var MAX_SESSIONS_PER_MONTH  = 2;
+var SESSION_DURATION_MS     = 60 * 60 * 1000; // 1 hora
+
+var imgB64      = null;
+var imgMime     = 'image/jpeg';
+var imgFileName = '';
+var imgFileSize = '';
+var timerInterval = null;
+var textTimerInterval = null;
+var lastUsedMode = 'local'; // 'local' | 'api'
+var currentPlanName = '';   // nombre del plan activo, según lo confirme el servidor
+var planUsage = null;       // { usados, limite } — lo llena el servidor en cada respuesta
+
+function currentMonthKey() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function loadLocalUsage() {
+  var raw = null;
+  try { raw = localStorage.getItem('tl_local_usage'); } catch (e) {}
+  var data = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
+  var month = currentMonthKey();
+  if (!data || data.month !== month) {
+    data = { month: month, sessionsUsed: 0, sessionStart: null, scansLeft: 0 };
+  }
+  return data;
+}
+
+function saveLocalUsage(data) {
+  try { localStorage.setItem('tl_local_usage', JSON.stringify(data)); } catch (e) {}
+}
+
+// Devuelve el estado vigente de la sesión demo, abriendo una nueva
+// automáticamente si el usuario todavía tiene sesiones disponibles este
+// mes y no hay ninguna activa en este momento.
+function ensureLocalSession() {
+  var data = loadLocalUsage();
+  var now = Date.now();
+
+  if (data.sessionStart && (now - data.sessionStart) < SESSION_DURATION_MS) {
+    return data; // sesión vigente
+  }
+
+  // Si había una sesión previa, ya caducó por tiempo.
+  if (data.sessionStart) {
+    data.sessionStart = null;
+    data.scansLeft = 0;
+  }
+
+  if (data.sessionsUsed < MAX_SESSIONS_PER_MONTH) {
+    data.sessionStart = now;
+    data.scansLeft = LOCAL_SCANS_PER_SESSION;
+    data.sessionsUsed += 1;
+    saveLocalUsage(data);
+    return data;
+  }
+
+  saveLocalUsage(data);
+  return data; // sin sesiones disponibles hasta el próximo mes
+}
+
+function consumeLocalScan() {
+  var data = loadLocalUsage();
+  data.scansLeft = Math.max(0, data.scansLeft - 1);
+  saveLocalUsage(data);
+  return data;
+}
+
+function updateScansUI() {
+  var hasLicense = !!getLicenseKey();
+
+  if (hasLicense) {
+    $('scansMode').textContent = currentPlanName || 'Plan';
+    if (planUsage) {
+      var restantes = Math.max(0, planUsage.limite - planUsage.usados);
+      $('scansLeft').textContent = restantes;
+      $('scansChip').style.opacity = restantes === 0 ? '0.4' : '1';
+    } else {
+      $('scansLeft').textContent = '—';
+      $('scansChip').style.opacity = '1';
+    }
+    return;
+  }
+
+  var data = loadLocalUsage();
+  var now = Date.now();
+  var sessionActive = data.sessionStart && (now - data.sessionStart) < SESSION_DURATION_MS;
+
+  $('scansMode').textContent = 'Demo';
+  if (sessionActive) {
+    $('scansLeft').textContent = data.scansLeft;
+    $('scansChip').style.opacity = data.scansLeft === 0 ? '0.4' : '1';
+  } else if (data.sessionsUsed < MAX_SESSIONS_PER_MONTH) {
+    $('scansLeft').textContent = LOCAL_SCANS_PER_SESSION;
+    $('scansChip').style.opacity = '1';
+  } else {
+    $('scansLeft').textContent = '0';
+    $('scansChip').style.opacity = '0.4';
+  }
+}
+
+// ─────────────────────────────────────────────
+//  UTILS
+// ─────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function fmtBytes(n) {
+  if (n < 1024)       return n + ' B';
+  if (n < 1048576)    return (n/1024).toFixed(1) + ' KB';
+  return (n/1048576).toFixed(1) + ' MB';
+}
+
+function showErr(msg) {
+  $('errText').textContent = msg;
+  $('errBar').classList.add('show');
+  setTimeout(() => $('errBar').classList.remove('show'), 7000);
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// La API key de Anthropic YA NO vive en el cliente. En su lugar, un usuario
+// con suscripción activa guarda su código de licencia (LemonSqueezy) en
+// localStorage; el backend valida ese código en cada análisis antes de
+// gastar la key gestionada del servidor.
+function getLicenseKey() {
+  return localStorage.getItem('tl_license') || '';
+}
+function setLicenseKey(v) {
+  if (v) localStorage.setItem('tl_license', v);
+  else localStorage.removeItem('tl_license');
+}
+
+// ─────────────────────────────────────────────
+//  MODE SWITCHING — Imagen | Texto
+// ─────────────────────────────────────────────
+function switchMode(mode) {
+  var isImage = mode === 'image';
+  $('tabImage').classList.toggle('active', isImage);
+  $('tabText').classList.toggle('active', !isImage);
+  $('imagePane').classList.toggle('active', isImage);
+  $('textPane').classList.toggle('active', !isImage);
+}
+$('tabImage').addEventListener('click', function () { switchMode('image'); });
+$('tabText').addEventListener('click', function () { switchMode('text'); });
+
+// ─────────────────────────────────────────────
+//  LICENSE PANEL
+// ─────────────────────────────────────────────
+$('licenseLinkBtn').addEventListener('click', function() {
+  $('apiPanelMsg').textContent = 'Activa tu licencia de Plan Basic o Pro:';
+  $('apiPanel').classList.add('show');
+  $('licenseInput').focus();
+});
+
+$('licenseActivateBtn').addEventListener('click', async function() {
+  var code = $('licenseInput').value.trim();
+  if (!code) return;
+  var btn = this;
+  var origTxt = btn.textContent;
+  btn.textContent = 'Validando...';
+  btn.disabled = true;
+  try {
+    var r = await fetch('/api/validate-license', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ license_key: code })
+    });
+    var data = await r.json();
+    if (data && data.valid) {
+      setLicenseKey(code);
+      currentPlanName = data.plan_name || 'Plan';
+      if (data.usage) planUsage = data.usage;
+      var restantes = planUsage ? Math.max(0, planUsage.limite - planUsage.usados) : null;
+      $('apiPanelMsg').textContent = restantes !== null
+        ? currentPlanName + ' activo — ' + restantes + ' análisis disponibles este mes.'
+        : currentPlanName + ' activo.';
+      $('licenseInput').style.display = 'none';
+      btn.style.display = 'none';
+      setTimeout(function() { $('apiPanel').classList.remove('show'); }, 3000);
+      updateScansUI();
+    } else {
+      showErr('Código de licencia inválido o vencido.');
+    }
+  } catch (e) {
+    showErr('No se pudo validar la licencia. Intenta de nuevo.');
+  }
+  btn.textContent = origTxt;
+  btn.disabled = false;
+});
+
+window.addEventListener('DOMContentLoaded', function() {
+  updateScansUI();
+
+  // Render steps — Imagen
+  const list = $('stepList');
+  STEPS.forEach(function(label, i) {
+    const div = document.createElement('div');
+    div.className = 'step';
+    div.innerHTML = '<div class="step-ind" id="si' + i + '"><div class="step-dot"></div></div>'
+                  + '<span class="step-lbl" id="sl' + i + '">' + label + '</span>';
+    list.appendChild(div);
+  });
+
+  // Render steps — Texto
+  const textList = $('textStepList');
+  TEXT_STEPS.forEach(function(label, i) {
+    const div = document.createElement('div');
+    div.className = 'step';
+    div.innerHTML = '<div class="step-ind" id="tsi' + i + '"><div class="step-dot"></div></div>'
+                  + '<span class="step-lbl" id="tsl' + i + '">' + label + '</span>';
+    textList.appendChild(div);
+  });
+});
+
+// ─────────────────────────────────────────────
+//  DRAG & DROP
+// ─────────────────────────────────────────────
+var dz = $('dropzone');
+var fi = $('fileInput');
+
+dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', function()  { dz.classList.remove('over'); });
+dz.addEventListener('drop', function(e) {
+  e.preventDefault(); dz.classList.remove('over');
+  var f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+fi.addEventListener('change', function() { if (fi.files[0]) handleFile(fi.files[0]); });
+
+$('urlBtn').addEventListener('click', function() {
+  var url = $('urlInput').value.trim();
+  if (!url) { showErr('Introduce una URL de imagen válida.'); return; }
+  handleUrl(url);
+});
+$('urlInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') $('urlBtn').click();
+});
+
+// ─────────────────────────────────────────────
+//  FILE HANDLING
+// ─────────────────────────────────────────────
+function handleFile(file) {
+  var allowed = ['image/png','image/jpeg','image/webp','image/gif'];
+  if (allowed.indexOf(file.type) === -1) { showErr('Formato no soportado. Usa PNG, JPG o WEBP.'); return; }
+  if (file.size > 10485760) { showErr('La imagen supera los 10MB.'); return; }
+
+  imgFileName = file.name;
+  imgFileSize = fmtBytes(file.size);
+  imgMime     = file.type;
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    imgB64 = e.target.result.split(',')[1];
+    showAnalyzing(e.target.result);
+    runImageAnalysis();
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleUrl(url) {
+  imgFileName = url.split('/').pop().split('?')[0] || 'imagen';
+  imgFileSize = '—';
+  showAnalyzing(null);
+  $('noteText').textContent = 'Accediendo a la imagen desde URL...';
+
+  fetch(url)
+    .then(function(r) {
+      if (!r.ok) throw new Error('No se pudo acceder a la URL.');
+      return r.blob();
+    })
+    .then(function(blob) {
+      imgMime     = blob.type || 'image/jpeg';
+      imgFileSize = fmtBytes(blob.size);
+      $('aSize').textContent = imgFileSize;
+      return new Promise(function(res) {
+        var reader = new FileReader();
+        reader.onload = function(e) { res(e.target.result); };
+        reader.readAsDataURL(blob);
+      });
+    })
+    .then(function(dataUrl) {
+      imgB64 = dataUrl.split(',')[1];
+      var img = $('aImg');
+      img.src = dataUrl;
+      img.onload = function() { img.classList.add('show'); };
+      runImageAnalysis();
+    })
+    .catch(function(err) {
+      resetApp();
+      showErr('No se pudo cargar la imagen. Descárgala y súbela directamente.');
+    });
+}
+
+// ─────────────────────────────────────────────
+//  UI STATE: ANALYZING
+// ─────────────────────────────────────────────
+function showAnalyzing(dataUrl) {
+  $('uploadCard').style.display = 'none';
+  $('result').classList.remove('show');
+  $('analyzing').classList.add('show');
+
+  $('aName').textContent = imgFileName;
+  $('aSize').textContent = imgFileSize;
+
+  if (dataUrl) {
+    var img = $('aImg');
+    img.src = dataUrl;
+    img.onload = function() { img.classList.add('show'); };
+  }
+
+  // Reset steps
+  for (var i = 0; i < STEPS.length; i++) {
+    var ind = $('si' + i);
+    ind.className = 'step-ind';
+    ind.innerHTML = '<div class="step-dot"></div>';
+    $('sl' + i).className = 'step-lbl';
+  }
+
+  // Animate steps
+  var delays = [0, 600, 1200, 1900, 2600];
+  delays.forEach(function(d, i) {
+    setTimeout(function() {
+      if (i > 0) {
+        $('si' + (i-1)).className = 'step-ind done';
+        $('si' + (i-1)).innerHTML = '';
+        $('sl' + (i-1)).className = 'step-lbl done';
+      }
+      $('si' + i).className = 'step-ind active';
+      $('sl' + i).className = 'step-lbl active';
+      $('noteText').textContent = STEP_NOTES[i];
+    }, d);
+  });
+  setTimeout(function() {
+    for (var j = 0; j < STEPS.length; j++) {
+      $('si' + j).className = 'step-ind done';
+      $('si' + j).innerHTML = '';
+      $('sl' + j).className = 'step-lbl done';
+    }
+  }, 3200);
+}
+
+// ─────────────────────────────────────────────
+//  UI STATE: RESULT
+// ─────────────────────────────────────────────
+function showResult(data) {
+  $('analyzing').classList.remove('show');
+  $('result').classList.add('show');
+
+  // Imagen
+  var src = $('aImg').src;
+  var ri = $('rImg');
+  ri.src = src;
+  ri.onload = function() { ri.classList.add('show'); };
+
+  $('rFname').textContent = imgFileName;
+  $('rFinfo').textContent = imgFileSize + (imgMime ? ' · ' + imgMime.split('/')[1].toUpperCase() : '');
+
+  var v    = data.veredicto;
+  var conf = parseInt(data.confianza) || 50;
+
+  // Tag
+  var tag = $('vTag');
+  if (v === 'IA') {
+    tag.className = 'verdict-tag tag-ai';
+    tag.textContent = 'IA Detectada';
+  } else if (v === 'REAL') {
+    tag.className = 'verdict-tag tag-real';
+    tag.textContent = 'Auténtica';
+  } else {
+    tag.className = 'verdict-tag tag-unsure';
+    tag.textContent = 'Incierto';
+  }
+
+  // Score
+  var color = v === 'IA' ? 'var(--red)' : v === 'REAL' ? 'var(--green)' : 'var(--amber)';
+  $('scoreNum').textContent  = conf + '%';
+  $('scoreNum').style.color  = color;
+  $('scoreLabel').textContent = v === 'IA'
+    ? 'de probabilidad de imagen generada por IA'
+    : v === 'REAL'
+    ? 'de probabilidad de fotografía auténtica'
+    : 'de certeza — resultado no determinante';
+
+  var fillPct = v === 'IA' ? conf : v === 'REAL' ? (100 - conf) : 50;
+  var fill = $('pbarFill');
+  fill.style.background = v === 'IA'
+    ? 'linear-gradient(90deg,rgba(251,191,36,.5),var(--red))'
+    : v === 'REAL'
+    ? 'linear-gradient(90deg,rgba(251,191,36,.4),var(--green))'
+    : 'var(--amber)';
+  setTimeout(function() { fill.style.width = fillPct + '%'; }, 80);
+
+  var sm = $('scoreModel');
+  if (v === 'IA' && data.modelo_probable && data.modelo_probable !== 'Desconocido') {
+    sm.innerHTML = 'Modelo probable: <span style="color:var(--accent)">' + data.modelo_probable + '</span>';
+  } else if (v === 'REAL') {
+    sm.innerHTML = '<span style="color:var(--green)">Sin coincidencias con generadores conocidos</span>';
+  } else {
+    sm.textContent = '';
+  }
+
+  // Señales
+  var sl = $('sigList');
+  sl.innerHTML = '';
+  var mkCls = v === 'IA' ? 'mk-ai' : v === 'REAL' ? 'mk-real' : 'mk-ambi';
+  (data.señales || []).forEach(function(sig) {
+    var row = document.createElement('div');
+    row.className = 'sig-row';
+    row.innerHTML = '<div class="sig-mark ' + mkCls + '"></div><span>' + sig + '</span>';
+    sl.appendChild(row);
+  });
+
+  if (lastUsedMode === 'local') {
+    consumeLocalScan();
+  }
+  updateScansUI();
+}
+
+// ─────────────────────────────────────────────
+//  RESET
+// ─────────────────────────────────────────────
+function resetApp() {
+  stopTimer();
+  $('uploadCard').style.display = 'block';
+  $('analyzing').classList.remove('show');
+  $('result').classList.remove('show');
+  $('aImg').src = ''; $('aImg').classList.remove('show');
+  $('rImg').src = ''; $('rImg').classList.remove('show');
+  $('pbarFill').style.width = '0';
+  $('urlInput').value = '';
+  fi.value = '';
+  imgB64 = null;
+}
+
+$('btnReset').addEventListener('click', resetApp);
+
+// ─────────────────────────────────────────────
+//  TIMER
+// ─────────────────────────────────────────────
+function startTimer() {
+  var secs = 0;
+  timerInterval = setInterval(function() {
+    secs++;
+    var msg = secs < 8  ? 'Analizando con visión IA...'
+            : secs < 20 ? 'Procesando señales forenses...'
+            : 'Sintetizando veredicto...';
+    $('noteText').textContent = msg + ' (' + secs + 's)';
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+// ─────────────────────────────────────────────
+//  COMPRESS
+// ─────────────────────────────────────────────
+function detectRealMime(b64) {
+  // Lee los primeros bytes del base64 para detectar el tipo real
+  try {
+    var bin = atob(b64.slice(0, 16));
+    var b0 = bin.charCodeAt(0), b1 = bin.charCodeAt(1),
+        b2 = bin.charCodeAt(2), b3 = bin.charCodeAt(3);
+    if (b0 === 0xFF && b1 === 0xD8) return 'image/jpeg';
+    if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4E && b3 === 0x47) return 'image/png';
+    if (b0 === 0x47 && b1 === 0x49 && b2 === 0x46) return 'image/gif';
+    if (b0 === 0x52 && b1 === 0x49 && b2 === 0x46 && b3 === 0x46) return 'image/webp';
+  } catch(e) {}
+  return null;
+}
+
+function compressImage(b64, mime) {
+  return new Promise(function(resolve) {
+    try {
+      // Detectar mime real desde bytes — ignora el header declarado
+      var realMime = detectRealMime(b64) || mime;
+      imgMime = realMime; // actualizar el estado global también
+
+      var img = new Image();
+      img.onload = function() {
+        var MAX = 1024;
+        var w = img.width, h = img.height;
+        // Siempre re-exportar como JPEG para garantizar consistencia
+        var cv = document.createElement('canvas');
+        if (w <= MAX && h <= MAX) {
+          cv.width = w; cv.height = h;
+        } else {
+          var scale = MAX / Math.max(w, h);
+          cv.width = Math.round(w * scale);
+          cv.height = Math.round(h * scale);
+        }
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        var out = cv.toDataURL('image/jpeg', 0.90);
+        imgMime = 'image/jpeg'; // siempre jpeg tras comprimir
+        resolve(out.split(',')[1]);
+      };
+      img.onerror = function() { resolve(b64); };
+      img.src = 'data:' + realMime + ';base64,' + b64;
+    } catch(e) { resolve(b64); }
+  });
+}
+
+// ─────────────────────────────────────────────
+//  ANÁLISIS VÍA BACKEND (Claude Vision)
+//  El prompt del sistema y el parseo del JSON ahora viven en
+//  /api/analyze-image.js — el navegador solo envía la imagen y recibe
+//  el veredicto ya listo.
+// ─────────────────────────────────────────────
+async function runImageAnalysis() {
+  if (!imgB64) return;
+
+  var license = getLicenseKey();
+
+  // Sin licencia activa → demo local (3 análisis, máx. 2 sesiones/mes, 1h por sesión)
+  if (!license) {
+    var session = ensureLocalSession();
+    if (session.scansLeft <= 0) {
+      var msg = session.sessionStart
+        ? 'Usaste tus 3 análisis de esta sesión demo.'
+        : 'Usaste tus 2 sesiones demo de este mes. Vuelve el próximo mes o activa un plan para más análisis.';
+      showErr(msg);
+      $('apiPanelMsg').textContent = msg;
+      $('apiPanel').classList.add('show');
+      resetApp();
+      return;
+    }
+    lastUsedMode = 'local';
+    runLocalAnalysis(imgB64, imgMime);
+    return;
+  }
+
+  lastUsedMode = 'api';
+  var compressed = await compressImage(imgB64, imgMime);
+
+  var timedOut = false;
+  var timeoutId = setTimeout(function() {
+    timedOut = true;
+    stopTimer();
+    resetApp();
+    showErr('Sin respuesta en 45 segundos. Verifica tu conexión o intenta con otra imagen.');
+  }, 45000);
+  startTimer();
+
+  try {
+    // La imagen y el código de licencia viajan al backend de Vercel.
+    // La API key real de Anthropic nunca sale del servidor.
+    var response = await fetch('/api/analyze-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_base64: compressed,
+        mime: imgMime,
+        license_key: license
+      })
+    });
+
+    if (timedOut) return;
+    clearTimeout(timeoutId);
+    stopTimer();
+
+    var data = await response.json().catch(function() { return {}; });
+
+    if (!response.ok) {
+      // Licencia rechazada por el servidor (vencida, revocada, o inválida)
+      if (data.code === 'LICENSE_REQUIRED') {
+        setLicenseKey(null);
+        updateScansUI();
+        showErr('Tu licencia ya no es válida. Verifica tu suscripción.');
+        $('apiPanelMsg').textContent = 'Tu licencia ya no es válida. Verifica tu suscripción.';
+        $('apiPanel').classList.add('show');
+        resetApp();
+        return;
+      }
+      // Límite mensual del plan alcanzado — no es un error del servidor, es la cuota justa del plan
+      if (data.code === 'PLAN_LIMIT_REACHED') {
+        showErr(data.error || 'Alcanzaste el límite de análisis de tu plan este mes.');
+        resetApp();
+        return;
+      }
+      throw new Error(data.error || ('Error del servidor ' + response.status));
+    }
+
+    if (data.plan_name) currentPlanName = data.plan_name;
+    if (data.usage) planUsage = data.usage;
+
+    // Normalizar clave 'senales' / 'señales'
+    if (!data.señales && data.senales) data.señales = data.senales;
+    if (!data.veredicto) throw new Error('Respuesta incompleta del servidor.');
+
+    showResult(data);
+
+  } catch(err) {
+    if (timedOut) return;
+    clearTimeout(timeoutId);
+    stopTimer();
+    var fallbackSession = loadLocalUsage();
+    var canFallback = fallbackSession.sessionStart && fallbackSession.scansLeft > 0
+      && (Date.now() - fallbackSession.sessionStart) < SESSION_DURATION_MS;
+    if (imgB64 && canFallback) {
+      lastUsedMode = 'local';
+      $('noteText').textContent = 'Servidor no disponible — usando análisis local...';
+      setTimeout(function() { runLocalAnalysis(imgB64, imgMime); }, 500);
+    } else {
+      resetApp();
+      showErr('Error: ' + err.message);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+//  SHARE
+// ─────────────────────────────────────────────
+$('btnShare').addEventListener('click', function() {
+  var score   = $('scoreNum').textContent;
+  var verdict = $('vTag').textContent;
+  var text    = 'TruthLens detectó: ' + verdict + ' — ' + score + ' de certeza\n\nVerifica imágenes con TruthLens · Aion IA';
+  if (navigator.share) {
+    navigator.share({ title: 'TruthLens — Resultado forense', text: text }).catch(function(){});
+  } else {
+    navigator.clipboard.writeText(text).then(function() {
+      var b = $('btnShare');
+      var orig = b.textContent;
+      b.textContent = 'Copiado ✓';
+      setTimeout(function() { b.textContent = orig; }, 2000);
+    });
+  }
+});
+
+// ─────────────────────────────────────────────
+//  ANÁLISIS LOCAL — EXIF + ELA + HEURÍSTICAS
+// ─────────────────────────────────────────────
+
+function runLocalAnalysis(b64, mime) {
+  var step = 0;
+  var stepTimings = [0, 500, 1000, 1600, 2200];
+  stepTimings.forEach(function(d, i) {
+    setTimeout(function() {
+      if (i > 0) {
+        $('si' + (i-1)).className = 'step-ind done';
+        $('si' + (i-1)).innerHTML = '';
+        $('sl' + (i-1)).className = 'step-lbl done';
+      }
+      $('si' + i).className = 'step-ind active';
+      $('sl' + i).className = 'step-lbl active';
+      $('noteText').textContent = STEP_NOTES[i];
+    }, d);
+  });
+
+  setTimeout(function() {
+    for (var j = 0; j < 5; j++) {
+      $('si' + j).className = 'step-ind done';
+      $('si' + j).innerHTML = '';
+      $('sl' + j).className = 'step-lbl done';
+    }
+    stopTimer();
+
+    var exif    = analyzeExif(b64);
+    var ela     = analyzeELA(b64, mime);
+    var heur    = analyzeHeuristics(b64, mime);
+    var result  = synthesizeLocalResult(exif, ela, heur);
+    showResult(result);
+  }, 2800);
+}
+
+// ── EXIF analysis via magic bytes + known patterns ──
+function analyzeExif(b64) {
+  var signals = [];
+  var score   = 0; // positivo = más IA
+
+  try {
+    // Decodificar primeros 64KB en busca de marcadores EXIF
+    var bytes = atob(b64.slice(0, 87380)); // ~64KB
+    var raw   = bytes;
+
+    // Buscar marcador EXIF (0xFFE1 seguido de "Exif")
+    var hasExif = raw.indexOf('Exif') !== -1;
+    // Buscar datos de cámara
+    var hasMake  = raw.indexOf('Make') !== -1 || raw.indexOf('Canon') !== -1 ||
+                   raw.indexOf('Nikon') !== -1 || raw.indexOf('Apple') !== -1 ||
+                   raw.indexOf('Samsung') !== -1 || raw.indexOf('SONY') !== -1 ||
+                   raw.indexOf('FUJIFILM') !== -1 || raw.indexOf('Olympus') !== -1;
+    var hasGPS   = raw.indexOf('GPS') !== -1;
+    var hasSW    = raw.indexOf('Adobe') !== -1 || raw.indexOf('Photoshop') !== -1 ||
+                   raw.indexOf('GIMP') !== -1 || raw.indexOf('Lightroom') !== -1;
+    var hasAI    = raw.indexOf('Midjourney') !== -1 || raw.indexOf('Stable Diffusion') !== -1 ||
+                   raw.indexOf('DALL') !== -1 || raw.indexOf('Firefly') !== -1 ||
+                   raw.indexOf('Ideogram') !== -1;
+
+    if (hasAI) {
+      score += 85;
+      signals.push('Firma de generador IA detectada en metadatos');
+    }
+    if (!hasExif) {
+      score += 20;
+      signals.push('Sin bloque EXIF — imágenes reales casi siempre lo tienen');
+    }
+    if (!hasMake && !hasGPS) {
+      score += 15;
+      signals.push('Sin datos de dispositivo fotográfico ni GPS');
+    }
+    if (hasMake) {
+      score -= 35;
+      signals.push('Metadatos de cámara real presentes');
+    }
+    if (hasGPS) {
+      score -= 20;
+      signals.push('Coordenadas GPS registradas en la imagen');
+    }
+    if (hasSW && !hasMake) {
+      score += 10;
+      signals.push('Software de edición detectado sin datos de cámara original');
+    }
+  } catch(e) {
+    signals.push('No se pudieron leer los metadatos del archivo');
+    score += 5;
+  }
+
+  return { score: Math.min(Math.max(score, -50), 90), signals: signals };
+}
+
+// ── Error Level Analysis via Canvas ──
+function analyzeELA(b64, mime) {
+  var result = { score: 0, signals: [] };
+  try {
+    var canvas1 = document.createElement('canvas');
+    var canvas2 = document.createElement('canvas');
+    var img     = new Image();
+    img.src = 'data:' + mime + ';base64,' + b64;
+
+    // ELA sincrónico simplificado — analiza distribución de píxeles
+    // (el ELA completo requiere re-compresión async, hacemos versión heurística)
+    var ctx1 = canvas1.getContext('2d');
+    // Tamaño de muestra fijo para rapidez
+    canvas1.width  = 64;
+    canvas1.height = 64;
+    ctx1.drawImage(img, 0, 0, 64, 64);
+    var pixels = ctx1.getImageData(0, 0, 64, 64).data;
+
+    // Análisis de uniformidad de color (imágenes IA tienden a ser muy uniformes en zonas)
+    var totalVariance = 0;
+    var zoneSize = 8;
+    var zones = 0;
+    for (var zy = 0; zy < 64; zy += zoneSize) {
+      for (var zx = 0; zx < 64; zx += zoneSize) {
+        var zMean = [0,0,0], zCount = 0;
+        for (var py = zy; py < zy + zoneSize && py < 64; py++) {
+          for (var px = zx; px < zx + zoneSize && px < 64; px++) {
+            var idx = (py * 64 + px) * 4;
+            zMean[0] += pixels[idx];
+            zMean[1] += pixels[idx+1];
+            zMean[2] += pixels[idx+2];
+            zCount++;
+          }
+        }
+        zMean[0] /= zCount; zMean[1] /= zCount; zMean[2] /= zCount;
+        var zVar = 0;
+        for (var py2 = zy; py2 < zy + zoneSize && py2 < 64; py2++) {
+          for (var px2 = zx; px2 < zx + zoneSize && px2 < 64; px2++) {
+            var idx2 = (py2 * 64 + px2) * 4;
+            zVar += Math.pow(pixels[idx2]   - zMean[0], 2);
+            zVar += Math.pow(pixels[idx2+1] - zMean[1], 2);
+            zVar += Math.pow(pixels[idx2+2] - zMean[2], 2);
+          }
+        }
+        totalVariance += zVar / zCount;
+        zones++;
+      }
+    }
+    var avgVariance = totalVariance / zones;
+
+    // Varianza muy baja = posible imagen IA (demasiado suave)
+    if (avgVariance < 200) {
+      result.score += 25;
+      result.signals.push('Uniformidad de color sospechosamente alta — posible suavizado artificial');
+    } else if (avgVariance < 500) {
+      result.score += 8;
+    } else if (avgVariance > 2000) {
+      result.score -= 15;
+      result.signals.push('Variación de textura consistente con fotografía real');
+    }
+
+    // Análisis de saturación extrema (imágenes IA tienden a saturación perfecta)
+    var satSum = 0, satCount = 0;
+    for (var i = 0; i < pixels.length; i += 4) {
+      var r = pixels[i]/255, g = pixels[i+1]/255, b = pixels[i+2]/255;
+      var max = Math.max(r,g,b), min = Math.min(r,g,b);
+      if (max > 0) satSum += (max - min) / max;
+      satCount++;
+    }
+    var avgSat = satSum / satCount;
+    if (avgSat > 0.55) {
+      result.score += 12;
+      result.signals.push('Saturación de color elevada, característica de modelos generativos');
+    }
+
+  } catch(e) {
+    // Si no hay imagen cargada todavía, retornar neutro
+  }
+  return result;
+}
+
+// ── Heurísticas de nombre/formato ──
+function analyzeHeuristics(b64, mime) {
+  var result = { score: 0, signals: [] };
+
+  // Tamaño del base64 → tamaño aproximado del archivo
+  var approxBytes = b64.length * 0.75;
+
+  // Dimensiones perfectas son sospechosas (512, 1024, 2048)
+  // No podemos saberlo sin el canvas, pero lo hacemos en ELA
+
+  // Imágenes IA muy comunes en WEBP sin EXIF
+  if ((mime === 'image/webp' || mime === 'image/png') && approxBytes < 500000) {
+    result.score += 8;
+    result.signals.push('Formato y tamaño compatibles con exportación de generador IA');
+  }
+
+  // JPEGs grandes tienden a ser fotografías reales
+  if (mime === 'image/jpeg' && approxBytes > 1500000) {
+    result.score -= 20;
+    result.signals.push('Tamaño y formato típico de fotografía de cámara de alta resolución');
+  }
+
+  return result;
+}
+
+// ── Síntesis final ──
+function synthesizeLocalResult(exif, ela, heur) {
+  var totalScore = exif.score + ela.score + heur.score;
+  // Normalizar a 0-100
+  var normalized = Math.min(Math.max(totalScore + 30, 0), 100);
+
+  var veredicto, confianza, resumen, modelo;
+
+  if (normalized >= 65) {
+    veredicto  = 'IA';
+    confianza  = Math.min(normalized, 92);
+    resumen    = 'Las señales forenses locales apuntan a imagen generada por IA. Un plan con análisis avanzado da mayor precisión.';
+    modelo     = 'Desconocido';
+  } else if (normalized <= 35) {
+    veredicto  = 'REAL';
+    confianza  = Math.min(100 - normalized, 90);
+    resumen    = 'Los indicadores locales sugieren fotografía auténtica.';
+    modelo     = null;
+  } else {
+    veredicto  = 'SOSPECHOSO';
+    confianza  = 55 + Math.abs(normalized - 50);
+    resumen    = 'Señales mixtas — no es posible determinar con análisis local.';
+    modelo     = 'Desconocido';
+  }
+
+  // Combinar señales de todas las fuentes
+  var allSignals = exif.signals.concat(ela.signals).concat(heur.signals);
+  // Máximo 3 señales más relevantes
+  var signals = allSignals.slice(0, 3);
+  if (signals.length === 0) {
+    signals = ['Análisis de metadatos completado', 'Revisión de patrones de píxeles realizada', 'Heurísticas de formato aplicadas'];
+  }
+
+  return {
+    veredicto:       veredicto,
+    confianza:       Math.round(confianza),
+    señales:         signals,
+    modelo_probable: modelo,
+    resumen:         resumen,
+    modo:            'local'
+  };
+}
+
+// ═════════════════════════════════════════════
+//  MÓDULO DE TEXTO
+// ═════════════════════════════════════════════
+
+// ── Contador de palabras en vivo ──
+$('textInput').addEventListener('input', function() {
+  var words = this.value.trim().split(/\s+/).filter(Boolean);
+  $('textWordCount').textContent = words.length + (words.length === 1 ? ' palabra' : ' palabras')
+    + (words.length < 15 ? ' (mínimo 15)' : '');
+  $('textAnalyzeBtn').disabled = words.length < 15;
+});
+
+// ── Timer de texto ──
+function startTextTimer() {
+  var secs = 0;
+  textTimerInterval = setInterval(function() {
+    secs++;
+    var msg = secs < 8 ? 'Analizando texto...'
+            : secs < 20 ? 'Procesando señales lingüísticas...'
+            : 'Sintetizando veredicto...';
+    $('textNoteText').textContent = msg + ' (' + secs + 's)';
+  }, 1000);
+}
+function stopTextTimer() {
+  if (textTimerInterval) { clearInterval(textTimerInterval); textTimerInterval = null; }
+}
+
+// ── UI: analizando ──
+function showTextAnalyzing() {
+  $('textCard').style.display = 'none';
+  $('textResult').classList.remove('show');
+  $('textAnalyzing').classList.add('show');
+
+  for (var i = 0; i < TEXT_STEPS.length; i++) {
+    var ind = $('tsi' + i);
+    ind.className = 'step-ind';
+    ind.innerHTML = '<div class="step-dot"></div>';
+    $('tsl' + i).className = 'step-lbl';
+  }
+
+  var delays = [0, 500, 1000, 1600, 2200];
+  delays.forEach(function(d, i) {
+    setTimeout(function() {
+      if (i > 0) {
+        $('tsi' + (i-1)).className = 'step-ind done';
+        $('tsi' + (i-1)).innerHTML = '';
+        $('tsl' + (i-1)).className = 'step-lbl done';
+      }
+      $('tsi' + i).className = 'step-ind active';
+      $('tsl' + i).className = 'step-lbl active';
+      $('textNoteText').textContent = TEXT_STEP_NOTES[i];
+    }, d);
+  });
+}
+
+function finishTextSteps() {
+  for (var j = 0; j < TEXT_STEPS.length; j++) {
+    $('tsi' + j).className = 'step-ind done';
+    $('tsi' + j).innerHTML = '';
+    $('tsl' + j).className = 'step-lbl done';
+  }
+}
+
+// ── UI: resultado ──
+function buildHighlightedText(fullText, fragments) {
+  var escaped = escapeHtml(fullText);
+  (fragments || []).forEach(function(frag) {
+    if (!frag) return;
+    var escFrag = escapeHtml(frag);
+    var idx = escaped.indexOf(escFrag);
+    if (idx !== -1) {
+      escaped = escaped.slice(0, idx) + '<mark>' + escFrag + '</mark>' + escaped.slice(idx + escFrag.length);
+    }
+  });
+  return escaped;
+}
+
+function showTextResult(data, originalText) {
+  $('textAnalyzing').classList.remove('show');
+  $('textResult').classList.add('show');
+
+  var v    = data.veredicto;
+  var conf = parseInt(data.confianza) || 50;
+
+  var color = v === 'IA' ? 'var(--red)' : v === 'HUMANO' ? 'var(--green)' : 'var(--amber)';
+  $('textScoreNum').textContent  = conf + '%';
+  $('textScoreNum').style.color  = color;
+  $('textScoreLabel').textContent = v === 'IA'
+    ? 'de probabilidad de texto generado por IA'
+    : v === 'HUMANO'
+    ? 'de probabilidad de texto humano'
+    : 'de certeza — resultado no determinante';
+
+  var fillPct = v === 'IA' ? conf : v === 'HUMANO' ? (100 - conf) : 50;
+  var fill = $('textPbarFill');
+  fill.style.background = v === 'IA'
+    ? 'linear-gradient(90deg,rgba(251,191,36,.5),var(--red))'
+    : v === 'HUMANO'
+    ? 'linear-gradient(90deg,rgba(251,191,36,.4),var(--green))'
+    : 'var(--amber)';
+  setTimeout(function() { fill.style.width = fillPct + '%'; }, 80);
+
+  var sm = $('textScoreModel');
+  if (v === 'IA' && data.modelo_probable) {
+    sm.innerHTML = 'Modelo probable: <span style="color:var(--accent)">' + escapeHtml(data.modelo_probable) + '</span>';
+  } else if (v === 'HUMANO') {
+    sm.innerHTML = '<span style="color:var(--green)">Sin patrones característicos de LLM</span>';
+  } else {
+    sm.textContent = '';
+  }
+
+  $('textHighlight').innerHTML = buildHighlightedText(originalText, data.fragmentos);
+
+  var sl = $('textSigList');
+  sl.innerHTML = '';
+  var mkCls = v === 'IA' ? 'mk-ai' : v === 'HUMANO' ? 'mk-real' : 'mk-ambi';
+  (data.señales || []).forEach(function(sig) {
+    var row = document.createElement('div');
+    row.className = 'sig-row';
+    row.innerHTML = '<div class="sig-mark ' + mkCls + '"></div><span>' + escapeHtml(sig) + '</span>';
+    sl.appendChild(row);
+  });
+
+  if (lastUsedMode === 'local') {
+    consumeLocalScan();
+  }
+  updateScansUI();
+}
+
+function resetTextApp() {
+  stopTextTimer();
+  $('textCard').style.display = 'block';
+  $('textAnalyzing').classList.remove('show');
+  $('textResult').classList.remove('show');
+  $('textPbarFill').style.width = '0';
+}
+$('btnTextReset').addEventListener('click', resetTextApp);
+
+$('btnTextShare').addEventListener('click', function() {
+  var score   = $('textScoreNum').textContent;
+  var label   = $('textScoreLabel').textContent;
+  var text    = 'TruthLens analizó un texto: ' + score + ' ' + label + '\n\nVerifica textos con TruthLens · Aion IA';
+  if (navigator.share) {
+    navigator.share({ title: 'TruthLens — Resultado lingüístico', text: text }).catch(function(){});
+  } else {
+    navigator.clipboard.writeText(text).then(function() {
+      var b = $('btnTextShare');
+      var orig = b.textContent;
+      b.textContent = 'Copiado ✓';
+      setTimeout(function() { b.textContent = orig; }, 2000);
+    });
+  }
+});
+
+// ─────────────────────────────────────────────
+//  ANÁLISIS PRINCIPAL — Texto
+// ─────────────────────────────────────────────
+async function runTextAnalysis() {
+  var text  = $('textInput').value.trim();
+  var words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 15) {
+    showErr('Escribe al menos 15 palabras para un análisis confiable.');
+    return;
+  }
+
+  var license = getLicenseKey();
+
+  // Sin licencia activa → demo local (misma cuota compartida que Imagen)
+  if (!license) {
+    var session = ensureLocalSession();
+    if (session.scansLeft <= 0) {
+      var msg = session.sessionStart
+        ? 'Usaste tus 3 análisis de esta sesión demo.'
+        : 'Usaste tus 2 sesiones demo de este mes. Vuelve el próximo mes o activa un plan para más análisis.';
+      showErr(msg);
+      $('apiPanelMsg').textContent = msg;
+      $('apiPanel').classList.add('show');
+      return;
+    }
+    lastUsedMode = 'local';
+    showTextAnalyzing();
+    setTimeout(function() {
+      finishTextSteps();
+      stopTextTimer();
+      var result = runLocalTextAnalysis(text);
+      showTextResult(result, text);
+    }, 2400);
+    return;
+  }
+
+  lastUsedMode = 'api';
+  showTextAnalyzing();
+  startTextTimer();
+
+  var timedOut  = false;
+  var timeoutId = setTimeout(function() {
+    timedOut = true;
+    stopTextTimer();
+    resetTextApp();
+    showErr('Sin respuesta en 45 segundos. Intenta de nuevo.');
+  }, 45000);
+
+  try {
+    var response = await fetch('/api/analyze-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text, license_key: license })
+    });
+
+    if (timedOut) return;
+    clearTimeout(timeoutId);
+    stopTextTimer();
+
+    var data = await response.json().catch(function() { return {}; });
+
+    if (!response.ok) {
+      if (data.code === 'LICENSE_REQUIRED') {
+        setLicenseKey(null);
+        updateScansUI();
+        showErr('Tu licencia ya no es válida. Verifica tu suscripción.');
+        $('apiPanelMsg').textContent = 'Tu licencia ya no es válida. Verifica tu suscripción.';
+        $('apiPanel').classList.add('show');
+        resetTextApp();
+        return;
+      }
+      if (data.code === 'PLAN_LIMIT_REACHED') {
+        showErr(data.error || 'Alcanzaste el límite de análisis de tu plan este mes.');
+        resetTextApp();
+        return;
+      }
+      throw new Error(data.error || ('Error del servidor ' + response.status));
+    }
+
+    if (data.plan_name) currentPlanName = data.plan_name;
+    if (data.usage) planUsage = data.usage;
+
+    if (!data.señales && data.senales) data.señales = data.senales;
+    if (!data.veredicto) throw new Error('Respuesta incompleta del servidor.');
+
+    showTextResult(data, text);
+
+  } catch (err) {
+    if (timedOut) return;
+    clearTimeout(timeoutId);
+    stopTextTimer();
+    var fallbackSession = loadLocalUsage();
+    var canFallback = fallbackSession.sessionStart && fallbackSession.scansLeft > 0
+      && (Date.now() - fallbackSession.sessionStart) < SESSION_DURATION_MS;
+    if (canFallback) {
+      lastUsedMode = 'local';
+      $('textNoteText').textContent = 'Servidor no disponible — usando análisis local...';
+      setTimeout(function() {
+        var result = runLocalTextAnalysis(text);
+        showTextResult(result, text);
+      }, 500);
+    } else {
+      resetTextApp();
+      showErr('Error: ' + err.message);
+    }
+  }
+}
+$('textAnalyzeBtn').addEventListener('click', runTextAnalysis);
+
+// ─────────────────────────────────────────────
+//  ANÁLISIS LOCAL DE TEXTO — heurísticas lingüísticas
+// ─────────────────────────────────────────────
+
+// Conectores y muletillas que aparecen con frecuencia desproporcionada
+// en texto generado por LLMs en español.
+var LLM_FILLERS = [
+  'en resumen', 'en conclusión', 'es importante destacar', 'es importante señalar',
+  'cabe destacar', 'cabe mencionar', 'es fundamental', 'en este sentido',
+  'por otro lado', 'en última instancia', 'vale la pena mencionar', 'no obstante',
+  'en definitiva', 'a fin de cuentas', 'de esta manera', 'es crucial', 'en última instancia'
+];
+
+function analyzeSentenceUniformity(text) {
+  var sentences = text.split(/[.!?]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+  if (sentences.length < 3) return { score: 0, signals: [] };
+
+  var lengths = sentences.map(function(s) { return s.split(/\s+/).filter(Boolean).length; });
+  var mean = lengths.reduce(function(a,b){ return a+b; }, 0) / lengths.length;
+  var variance = lengths.reduce(function(a,l){ return a + Math.pow(l-mean,2); }, 0) / lengths.length;
+  var stdDev = Math.sqrt(variance);
+  var coefVar = mean > 0 ? stdDev / mean : 0;
+
+  var score = 0, signals = [];
+  if (coefVar < 0.25) {
+    score += 30;
+    signals.push('Longitud de oración muy uniforme — patrón típico de texto generado');
+  } else if (coefVar < 0.4) {
+    score += 12;
+  } else if (coefVar > 0.6) {
+    score -= 15;
+    signals.push('Variación natural en el ritmo de las oraciones');
+  }
+  return { score: score, signals: signals };
+}
+
+function analyzeLLMFillers(text) {
+  var lower = text.toLowerCase();
+  var words = text.split(/\s+/).filter(Boolean).length;
+  var hits = 0, matched = [];
+  LLM_FILLERS.forEach(function(phrase) {
+    if (lower.indexOf(phrase) !== -1) { hits++; matched.push(phrase); }
+  });
+
+  var score = 0, signals = [];
+  if (hits >= 3) {
+    score += 28;
+    signals.push('Uso frecuente de conectores típicos de IA ("' + matched.slice(0,2).join('", "') + '")');
+  } else if (hits >= 1) {
+    score += 10;
+  }
+  return { score: score, signals: signals };
+}
+
+function analyzeLexicalDiversity(text) {
+  var words = text.toLowerCase().replace(/[^\p{L}\s]/gu, '').split(/\s+/).filter(Boolean);
+  if (words.length < 10) return { score: 0, signals: [] };
+
+  var unique = {};
+  var uniqueCount = 0;
+  words.forEach(function(w) { if (!unique[w]) { unique[w] = 1; uniqueCount++; } });
+  var ttr = uniqueCount / words.length;
+
+  var score = 0, signals = [];
+  if (ttr > 0.75) {
+    score += 15;
+    signals.push('Vocabulario muy variado sin repeticiones — posible optimización de un modelo');
+  } else if (ttr < 0.45) {
+    score -= 10;
+    signals.push('Repetición natural de palabras, consistente con escritura humana');
+  }
+  return { score: score, signals: signals };
+}
+
+function synthesizeLocalTextResult(uni, fill, lex) {
+  var totalScore = uni.score + fill.score + lex.score;
+  var normalized = Math.min(Math.max(totalScore + 30, 0), 100);
+
+  var veredicto, confianza, resumen;
+  if (normalized >= 65) {
+    veredicto = 'IA';
+    confianza = Math.min(normalized, 88);
+    resumen   = 'Las señales lingüísticas locales apuntan a texto generado por IA.';
+  } else if (normalized <= 35) {
+    veredicto = 'HUMANO';
+    confianza = Math.min(100 - normalized, 85);
+    resumen   = 'Los indicadores locales sugieren escritura humana.';
+  } else {
+    veredicto = 'SOSPECHOSO';
+    confianza = 55 + Math.abs(normalized - 50);
+    resumen   = 'Señales mixtas — no es posible determinar con análisis local.';
+  }
+
+  var allSignals = uni.signals.concat(fill.signals).concat(lex.signals);
+  var signals = allSignals.slice(0, 3);
+  if (signals.length === 0) {
+    signals = ['Análisis de estructura de oraciones completado', 'Revisión de conectores de texto realizada', 'Cálculo de diversidad léxica aplicado'];
+  }
+
+  return {
+    veredicto:       veredicto,
+    confianza:       Math.round(confianza),
+    señales:         signals,
+    modelo_probable: null,
+    fragmentos:      [],
+    resumen:         resumen,
+    modo:            'local'
+  };
+}
+
+function runLocalTextAnalysis(text) {
+  var uni = analyzeSentenceUniformity(text);
+  var fill = analyzeLLMFillers(text);
+  var lex = analyzeLexicalDiversity(text);
+  return synthesizeLocalTextResult(uni, fill, lex);
+}
+
+</script>
+</body>
+</html>
